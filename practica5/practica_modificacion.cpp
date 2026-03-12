@@ -2,11 +2,23 @@
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
 std::string ToBinary(uint8_t value) {
   return std::bitset<8>(value).to_string();
+}
+
+std::string ToHex(uint8_t value) {
+  std::ostringstream output;
+  output << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+         << static_cast<int>(value);
+  return output.str();
+}
+
+std::string ToBinaryAndHex(uint8_t value) {
+  return ToBinary(value) + " 0x" + ToHex(value);
 }
 
 uint8_t mulx(uint8_t value, uint8_t algorithm_byte) {
@@ -58,6 +70,7 @@ int main() {
   std::cin >> algorithm;
 
   uint8_t algorithm_byte;
+
   if (algorithm == "AES") {
     algorithm_byte = 0x1B;
   } else if (algorithm == "SNOW3G") {
@@ -75,7 +88,7 @@ int main() {
   std::vector<std::string> step_descriptions(8);
 
   values[0] = a;
-  step_descriptions[0] = ToBinary(a);
+  step_descriptions[0] = ToBinaryAndHex(a);
 
   for (int i = 1; i < 8; ++i) {
     uint8_t previous = values[i - 1];
@@ -85,9 +98,11 @@ int main() {
 
     if (previous & 0x80) {
       step_descriptions[i] =
-          ToBinary(shifted) + "+" + ToBinary(algorithm_byte) + "=" + ToBinary(current);
+          ToBinary(shifted) + " 0x" + ToHex(shifted) + " + " +
+          ToBinary(algorithm_byte) + " 0x" + ToHex(algorithm_byte) + " = " +
+          ToBinary(current) + " 0x" + ToHex(current);
     } else {
-      step_descriptions[i] = ToBinary(current);
+      step_descriptions[i] = ToBinaryAndHex(current);
     }
   }
 
@@ -97,27 +112,26 @@ int main() {
   for (int i = 0; i < 8; ++i) {
     if ((b >> i) & 0x01) {
       uint8_t mask_value = static_cast<uint8_t>(1u << i);
-      expansion_masks.push_back(ToBinary(a) + "x" + ToBinary(mask_value));
-      expansion_values.push_back(ToBinary(values[i]));
+      expansion_masks.push_back(ToBinaryAndHex(a) + " x " + ToBinaryAndHex(mask_value));
+      expansion_values.push_back(ToBinaryAndHex(values[i]));
     }
   }
 
   std::cout << std::endl;
-  std::cout << "Salida:" << std::endl;
-  std::cout << std::endl;
-  std::cout << "  - Primer byte: " << ToBinary(a) << std::endl;
-  std::cout << "  - Segundo byte: " << ToBinary(b) << std::endl;
-  std::cout << "  - Byte Algoritmo: " << ToBinary(algorithm_byte) << std::endl;
-  std::cout << "  - Multiplicacion: " << ToBinary(result) << std::endl;
+  std::cout << "Salida:" << std::endl << std::endl;
+
+  std::cout << "  - Primer byte: " << ToBinaryAndHex(a) << std::endl;
+  std::cout << "  - Segundo byte: " << ToBinaryAndHex(b) << std::endl;
+  std::cout << "  - Byte Algoritmo: " << ToBinaryAndHex(algorithm_byte) << std::endl;
+  std::cout << "  - Multiplicacion: " << ToBinaryAndHex(result) << std::endl;
 
   std::cout << std::endl;
-  std::cout << "Resultante de la operación:" << std::endl;
-  std::cout << std::endl;
+  std::cout << "Resultante de la operación:" << std::endl << std::endl;
 
-  std::cout << ToBinary(a) << "x" << ToBinary(b) << "="
-            << Join(expansion_masks, " + ") << "=" << std::endl;
+  std::cout << ToBinaryAndHex(a) << " x " << ToBinaryAndHex(b) << " = "
+            << Join(expansion_masks, " + ") << " =" << std::endl;
 
-  std::cout << Join(expansion_values, "+") << "=" << ToBinary(result) << std::endl;
+  std::cout << Join(expansion_values, " + ") << " = " << ToBinaryAndHex(result) << std::endl;
 
   std::cout << std::endl;
   return 0;
