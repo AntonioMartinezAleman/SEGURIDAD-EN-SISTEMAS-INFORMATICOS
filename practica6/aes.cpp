@@ -1,3 +1,12 @@
+/**
+ * @file aes.cpp
+ * @brief Implementación del cifrado AES-128 (Advanced Encryption Standard).
+ *
+ * Este programa cifra un bloque de 16 bytes usando una clave de 16 bytes
+ * siguiendo el estándar AES-128 con 10 rondas de cifrado.
+ * La entrada y salida se manejan en formato hexadecimal.
+ */
+
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -7,6 +16,13 @@
 
 using namespace std;
 
+/**
+ * @brief Tabla de sustitución (S-Box) del estándar AES.
+ *
+ * Tabla de 256 valores predefinida por el estándar. Dado un byte de entrada
+ * (0x00 a 0xFF), devuelve otro byte como sustituto. Se usa en SubBytes
+ * y SubWord para introducir confusión en el cifrado.
+ */
 const unsigned char SBOX[256] = {
   0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
   0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
@@ -26,10 +42,26 @@ const unsigned char SBOX[256] = {
   0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
 };
 
+/**
+ * @brief Constantes de ronda (Round Constants) del estándar AES.
+ *
+ * Se usan durante la expansión de clave. Hay una constante por cada ronda
+ * (10 en total para AES-128). Se aplican mediante XOR al generar nuevas
+ * palabras de la clave expandida.
+ */
 const unsigned char RCON[10] = {
   0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1B,0x36
 };
 
+/**
+ * @brief Valida que una cadena sea hexadecimal de exactamente 32 caracteres.
+ *
+ * Comprueba que la entrada del usuario tenga el formato correcto:
+ * 32 caracteres hexadecimales (0-9, a-f, A-F), lo que equivale a 16 bytes.
+ *
+ * @param s Cadena a validar.
+ * @return true si es una cadena hexadecimal válida de 32 caracteres, false en caso contrario.
+ */
 bool esHex(const string& s) {
   if (s.size() != 32) return false;
   for (size_t i = 0; i < s.size(); i++) {
@@ -38,6 +70,15 @@ bool esHex(const string& s) {
   return true;
 }
 
+/**
+ * @brief Convierte una cadena hexadecimal en un vector de bytes.
+ *
+ * Toma los caracteres de dos en dos y convierte cada par a su valor
+ * numérico. Por ejemplo, "4f6e" se convierte en {0x4F, 0x6E}.
+ *
+ * @param s Cadena hexadecimal de entrada.
+ * @return Vector de bytes resultante.
+ */
 vector<unsigned char> hexABytes(const string& s) {
   vector<unsigned char> bytes;
   for (size_t i = 0; i < s.size(); i += 2) {
@@ -51,6 +92,16 @@ vector<unsigned char> hexABytes(const string& s) {
   return bytes;
 }
 
+/**
+ * @brief Convierte un vector de bytes en una cadena hexadecimal.
+ *
+ * Operación inversa a hexABytes. Cada byte se representa con dos
+ * dígitos hexadecimales en minúscula. Por ejemplo, {0x4F, 0x6E}
+ * se convierte en "4f6e".
+ *
+ * @param v Vector de bytes a convertir.
+ * @return Cadena hexadecimal resultante.
+ */
 string bytesAHex(const vector<unsigned char>& v) {
   stringstream ss;
   for (size_t i = 0; i < v.size(); i++) {
@@ -59,6 +110,16 @@ string bytesAHex(const vector<unsigned char>& v) {
   return ss.str();
 }
 
+/**
+ * @brief Coloca 16 bytes en la matriz de estado 4x4 por columnas.
+ *
+ * Los bytes se colocan columna a columna (no fila a fila), siguiendo
+ * el orden definido por el estándar AES. Los primeros 4 bytes llenan
+ * la columna 0, los siguientes 4 la columna 1, etc.
+ *
+ * @param v Vector de 16 bytes de entrada.
+ * @param estado Matriz 4x4 donde se almacena el estado.
+ */
 void ponerEstado(const vector<unsigned char>& v, unsigned char estado[4][4]) {
   int k = 0;
   for (int c = 0; c < 4; c++) {
@@ -68,6 +129,15 @@ void ponerEstado(const vector<unsigned char>& v, unsigned char estado[4][4]) {
   }
 }
 
+/**
+ * @brief Extrae los 16 bytes de la matriz de estado 4x4 en un vector.
+ *
+ * Lee la matriz por columnas (orden inverso a ponerEstado) y devuelve
+ * los 16 bytes en un vector lineal.
+ *
+ * @param estado Matriz 4x4 del estado actual.
+ * @return Vector de 16 bytes extraídos del estado.
+ */
 vector<unsigned char> sacarEstado(unsigned char estado[4][4]) {
   vector<unsigned char> v;
   for (int c = 0; c < 4; c++) {
@@ -78,19 +148,57 @@ vector<unsigned char> sacarEstado(unsigned char estado[4][4]) {
   return v;
 }
 
+/**
+ * @brief Convierte la matriz de estado a su representación hexadecimal.
+ *
+ * Combina sacarEstado y bytesAHex para obtener directamente una cadena
+ * hexadecimal a partir de la matriz de estado.
+ *
+ * @param estado Matriz 4x4 del estado actual.
+ * @return Cadena hexadecimal de 32 caracteres representando el estado.
+ */
 string estadoAHex(unsigned char estado[4][4]) {
   return bytesAHex(sacarEstado(estado));
 }
 
+/**
+ * @brief Multiplica un byte por 2 en el campo finito GF(2^8).
+ *
+ * Desplaza el byte un bit a la izquierda. Si el bit más significativo
+ * estaba activado (el byte era >= 128), aplica XOR con 0x1B (el polinomio
+ * irreducible del estándar AES) para mantener el resultado en el rango 0-255.
+ *
+ * @param x Byte a multiplicar por 2.
+ * @return Resultado de la multiplicación en GF(2^8).
+ */
 unsigned char por2(unsigned char x) {
   if (x & 0x80) return (x << 1) ^ 0x1b;
   return x << 1;
 }
 
+/**
+ * @brief Multiplica un byte por 3 en el campo finito GF(2^8).
+ *
+ * Aprovecha que 3 = 2 + 1 en GF(2^8), por lo que multiplicar por 3
+ * es equivalente a (multiplicar por 2) XOR (el byte original).
+ *
+ * @param x Byte a multiplicar por 3.
+ * @return Resultado de la multiplicación en GF(2^8).
+ */
 unsigned char por3(unsigned char x) {
   return por2(x) ^ x;
 }
 
+/**
+ * @brief Paso AddRoundKey: mezcla el estado con una subclave mediante XOR.
+ *
+ * Recorre la matriz de estado por columnas y aplica XOR byte a byte
+ * con la subclave de la ronda correspondiente. Es la operación que
+ * introduce la clave secreta en el proceso de cifrado.
+ *
+ * @param estado Matriz 4x4 del estado (se modifica in situ).
+ * @param clave Vector de 16 bytes con la subclave de la ronda.
+ */
 void addRoundKey(unsigned char estado[4][4], const vector<unsigned char>& clave) {
   int k = 0;
   for (int c = 0; c < 4; c++) {
@@ -100,6 +208,15 @@ void addRoundKey(unsigned char estado[4][4], const vector<unsigned char>& clave)
   }
 }
 
+/**
+ * @brief Paso SubBytes: sustituye cada byte del estado usando la S-Box.
+ *
+ * Recorre los 16 bytes de la matriz de estado y reemplaza cada uno
+ * por su correspondiente en la tabla SBOX. Introduce confusión en el
+ * cifrado haciendo que la relación entrada-salida sea no lineal.
+ *
+ * @param estado Matriz 4x4 del estado (se modifica in situ).
+ */
 void subBytes(unsigned char estado[4][4]) {
   for (int f = 0; f < 4; f++) {
     for (int c = 0; c < 4; c++) {
@@ -108,6 +225,19 @@ void subBytes(unsigned char estado[4][4]) {
   }
 }
 
+/**
+ * @brief Paso ShiftRows: rota las filas del estado hacia la izquierda.
+ *
+ * Cada fila se desplaza un número diferente de posiciones:
+ * - Fila 0: sin desplazamiento.
+ * - Fila 1: 1 posición a la izquierda.
+ * - Fila 2: 2 posiciones a la izquierda.
+ * - Fila 3: 3 posiciones a la izquierda (equivale a 1 a la derecha).
+ *
+ * Esto dispersa los bytes entre columnas, contribuyendo a la difusión.
+ *
+ * @param estado Matriz 4x4 del estado (se modifica in situ).
+ */
 void shiftRows(unsigned char estado[4][4]) {
   unsigned char temp;
 
@@ -131,6 +261,16 @@ void shiftRows(unsigned char estado[4][4]) {
   estado[3][0] = temp;
 }
 
+/**
+ * @brief Paso MixColumns: mezcla cada columna del estado.
+ *
+ * Para cada columna, calcula 4 bytes nuevos donde cada uno depende
+ * de los 4 bytes originales de esa columna, usando multiplicaciones
+ * por 2 y por 3 en GF(2^8) combinadas con XOR. Esto logra que un
+ * cambio en un solo byte afecte a toda la columna (difusión).
+ *
+ * @param estado Matriz 4x4 del estado (se modifica in situ).
+ */
 void mixColumns(unsigned char estado[4][4]) {
   for (int c = 0; c < 4; c++) {
     unsigned char a0 = estado[0][c];
@@ -145,6 +285,15 @@ void mixColumns(unsigned char estado[4][4]) {
   }
 }
 
+/**
+ * @brief Rota una palabra de 4 bytes una posición a la izquierda.
+ *
+ * Desplaza los bytes de forma circular: [a, b, c, d] -> [b, c, d, a].
+ * Se usa durante la expansión de clave en las posiciones múltiplo de 4.
+ *
+ * @param w Palabra de 4 bytes a rotar.
+ * @return Palabra rotada.
+ */
 vector<unsigned char> rotWord(vector<unsigned char> w) {
   unsigned char temp = w[0];
   w[0] = w[1];
@@ -154,6 +303,16 @@ vector<unsigned char> rotWord(vector<unsigned char> w) {
   return w;
 }
 
+/**
+ * @brief Aplica la S-Box a cada byte de una palabra de 4 bytes.
+ *
+ * Sustituye cada uno de los 4 bytes usando la tabla SBOX,
+ * igual que SubBytes pero solo para una palabra individual.
+ * Se usa durante la expansión de clave.
+ *
+ * @param w Palabra de 4 bytes a sustituir.
+ * @return Palabra con los bytes sustituidos.
+ */
 vector<unsigned char> subWord(vector<unsigned char> w) {
   for (int i = 0; i < 4; i++) {
     w[i] = SBOX[w[i]];
@@ -161,6 +320,21 @@ vector<unsigned char> subWord(vector<unsigned char> w) {
   return w;
 }
 
+/**
+ * @brief Expande la clave original de 16 bytes en 11 subclaves de 16 bytes.
+ *
+ * A partir de la clave original genera 44 palabras de 4 bytes (w[0..43]):
+ * - w[0..3]: se obtienen directamente de la clave original.
+ * - w[4..43]: cada palabra se calcula como XOR entre w[i-4] y w[i-1].
+ *   En las posiciones múltiplo de 4, se aplica además RotWord, SubWord
+ *   y XOR con la constante RCON correspondiente.
+ *
+ * Finalmente agrupa las 44 palabras en 11 subclaves de 16 bytes cada una,
+ * una para la ronda inicial y una para cada una de las 10 rondas.
+ *
+ * @param clave Vector de 16 bytes con la clave original.
+ * @return Vector de 11 subclaves, cada una de 16 bytes.
+ */
 vector<vector<unsigned char>> expandirClave(const vector<unsigned char>& clave) {
   vector<vector<unsigned char>> w(44, vector<unsigned char>(4));
 
@@ -199,6 +373,20 @@ vector<vector<unsigned char>> expandirClave(const vector<unsigned char>& clave) 
   return subclaves;
 }
 
+/**
+ * @brief Función principal que ejecuta el cifrado AES-128.
+ *
+ * Flujo del programa:
+ * 1. Solicita al usuario la clave y el bloque en hexadecimal (32 caracteres cada uno).
+ * 2. Valida que ambas entradas sean hexadecimales válidas de 32 caracteres.
+ * 3. Convierte las entradas a bytes y expande la clave en 11 subclaves.
+ * 4. Ejecuta la ronda 0: AddRoundKey con la subclave inicial.
+ * 5. Ejecuta las rondas 1-9: SubBytes + ShiftRows + MixColumns + AddRoundKey.
+ * 6. Ejecuta la ronda 10: SubBytes + ShiftRows + AddRoundKey (sin MixColumns).
+ * 7. Muestra el texto cifrado resultante.
+ *
+ * @return 0 si el cifrado se completó correctamente, 1 si la entrada es inválida.
+ */
 int main() {
   string claveHex;
   string bloqueHex;

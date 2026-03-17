@@ -1,0 +1,23 @@
+AES
+
+  Mensaje + Clave original
+          |
+          v
+     AddRoundKey (ronda 0)
+          |
+          v
+    +---------------------+
+    | Repetir 9 veces     |
+    |  1. SubBytes        |  <-- sustituir cada byte
+    |  2. ShiftRows       |  <-- rotar filas
+    |  3. MixColumns      |  <-- mezclar columnas
+    |  4. AddRoundKey     |  <-- XOR con subclave
+    +---------------------+
+          |
+          v
+     SubBytes
+     ShiftRows
+     AddRoundKey (ronda 10, sin MixColumns)
+          |
+          v
+     Texto cifrado
